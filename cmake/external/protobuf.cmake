@@ -1,4 +1,4 @@
-# Copyright (c) 2016 PaddlePaddle Authors. All Rights Reserve.
+# Copyright (c) 2016 PaddlePaddle Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -14,8 +14,22 @@
 
 INCLUDE(ExternalProject)
 # Always invoke `FIND_PACKAGE(Protobuf)` for importing function protobuf_generate_cpp
+IF(NOT WIN32)
 FIND_PACKAGE(Protobuf QUIET)
-SET(PROTOBUF_FOUND "OFF")
+ENDIF(NOT WIN32)
+macro(UNSET_VAR VAR_NAME)
+    UNSET(${VAR_NAME} CACHE)
+    UNSET(${VAR_NAME})
+endmacro()
+
+UNSET_VAR(PROTOBUF_INCLUDE_DIR)
+UNSET_VAR(PROTOBUF_FOUND)
+UNSET_VAR(PROTOBUF_PROTOC_EXECUTABLE)
+UNSET_VAR(PROTOBUF_PROTOC_LIBRARY)
+UNSET_VAR(PROTOBUF_LITE_LIBRARY)
+UNSET_VAR(PROTOBUF_LIBRARY)
+UNSET_VAR(PROTOBUF_INCLUDE_DIR)
+UNSET_VAR(Protobuf_PROTOC_EXECUTABLE)
 
 if(NOT COMMAND protobuf_generate_python)  # before cmake 3.4, protobuf_genrerate_python is not defined.
     function(protobuf_generate_python SRCS)
@@ -83,12 +97,14 @@ macro(PROMPT_PROTOBUF_LIB)
     SET(protobuf_DEPS ${ARGN})
 
     MESSAGE(STATUS "Protobuf protoc executable: ${PROTOBUF_PROTOC_EXECUTABLE}")
+    MESSAGE(STATUS "Protobuf-lite library: ${PROTOBUF_LITE_LIBRARY}")
     MESSAGE(STATUS "Protobuf library: ${PROTOBUF_LIBRARY}")
+    MESSAGE(STATUS "Protoc library: ${PROTOBUF_PROTOC_LIBRARY}")
     MESSAGE(STATUS "Protobuf version: ${PROTOBUF_VERSION}")
     INCLUDE_DIRECTORIES(${PROTOBUF_INCLUDE_DIR})
 
     # Assuming that all the protobuf libraries are of the same type.
-    IF(${PROTOBUF_LIBRARY} MATCHES "${CMAKE_STATIC_LIBRARY_SUFFIX}$")
+    IF(${PROTOBUF_LIBRARY} MATCHES ${CMAKE_STATIC_LIBRARY_SUFFIX})
         SET(protobuf_LIBTYPE STATIC)
     ELSEIF(${PROTOBUF_LIBRARY} MATCHES "${CMAKE_SHARED_LIBRARY_SUFFIX}$")
         SET(protobuf_LIBTYPE SHARED)
@@ -110,7 +126,6 @@ macro(PROMPT_PROTOBUF_LIB)
     # FIND_Protobuf.cmake uses `Protobuf_PROTOC_EXECUTABLE`.
     # make `protobuf_generate_cpp` happy.
     SET(Protobuf_PROTOC_EXECUTABLE ${PROTOBUF_PROTOC_EXECUTABLE})
-
     FOREACH(dep ${protobuf_DEPS})
         ADD_DEPENDENCIES(protobuf ${dep})
         ADD_DEPENDENCIES(protobuf_lite ${dep})
@@ -127,18 +142,25 @@ macro(SET_PROTOBUF_VERSION)
 endmacro()
 
 set(PROTOBUF_ROOT "" CACHE PATH "Folder contains protobuf")
+IF (WIN32)
+    SET(PROTOBUF_ROOT ${THIRD_PARTY_PATH}/install/protobuf)
+    MESSAGE(WARNING, "In windows, protobuf only support msvc build, please build it manually and put it at " ${PROTOBUF_ROOT})
+ENDIF(WIN32)
+
 if (NOT "${PROTOBUF_ROOT}" STREQUAL "")
-    find_path(PROTOBUF_INCLUDE_DIR google/protobuf/message.h PATHS ${PROTOBUF_ROOT}/include)
-    find_library(PROTOBUF_LIBRARY protobuf PATHS ${PROTOBUF_ROOT}/lib)
-    find_library(PROTOBUF_LITE_LIBRARY protobuf-lite PATHS ${PROTOBUF_ROOT}/lib)
-    find_library(PROTOBUF_PROTOC_LIBRARY protoc PATHS ${PROTOBUF_ROOT}/lib)
-    find_program(PROTOBUF_PROTOC_EXECUTABLE protoc PATHS ${PROTOBUF_ROOT}/bin)
+
+    find_path(PROTOBUF_INCLUDE_DIR google/protobuf/message.h PATHS ${PROTOBUF_ROOT}/include NO_DEFAULT_PATH)
+    find_library(PROTOBUF_LIBRARY protobuf libprotobuf.lib PATHS ${PROTOBUF_ROOT}/lib NO_DEFAULT_PATH)
+    find_library(PROTOBUF_LITE_LIBRARY protobuf-lite libprotobuf-lite.lib PATHS ${PROTOBUF_ROOT}/lib NO_DEFAULT_PATH)
+    find_library(PROTOBUF_PROTOC_LIBRARY protoc libprotoc.lib PATHS ${PROTOBUF_ROOT}/lib NO_DEFAULT_PATH)
+    find_program(PROTOBUF_PROTOC_EXECUTABLE protoc PATHS ${PROTOBUF_ROOT}/bin NO_DEFAULT_PATH)
     if (PROTOBUF_INCLUDE_DIR AND PROTOBUF_LIBRARY AND PROTOBUF_LITE_LIBRARY AND PROTOBUF_PROTOC_LIBRARY AND PROTOBUF_PROTOC_EXECUTABLE)
         message(STATUS "Using custom protobuf library in ${PROTOBUF_ROOT}.")
+        SET(PROTOBUF_FOUND true)
         SET_PROTOBUF_VERSION()
         PROMPT_PROTOBUF_LIB()
     else()
-        message(WARNING "Cannot find protobuf library in ${PROTOBUF_ROOT}.")
+        message(WARNING "Cannot find protobuf library in ${PROTOBUF_ROOT}")
     endif()
 endif()
 
@@ -178,18 +200,31 @@ FUNCTION(build_protobuf TARGET_NAME BUILD_FOR_HOST)
         SET(OPTIONAL_CACHE_ARGS "-DZLIB_ROOT:STRING=${ZLIB_ROOT}")
     ENDIF()
 
+    SET(PROTOBUF_REPO "https://github.com/google/protobuf.git")
+    SET(PROTOBUF_TAG "9f75c5aa851cd877fb0d93ccc31b8567a6706546")
+    IF(MOBILE_INFERENCE)
+        # The reason why the official version is not used is described in
+        # https://github.com/PaddlePaddle/Paddle/issues/6114
+        SET(PROTOBUF_REPO "https://github.com/qingqing01/protobuf.git")
+        SET(PROTOBUF_TAG "v3.2.0")
+        IF(NOT BUILD_FOR_HOST)
+            SET(OPTIONAL_ARGS ${OPTIONAL_ARGS} "-Dprotobuf_BUILD_PROTOC_BINARIES=OFF")
+        ENDIF()
+    ENDIF()
+
     ExternalProject_Add(
         ${TARGET_NAME}
         ${EXTERNAL_PROJECT_LOG_ARGS}
         PREFIX          ${PROTOBUF_SOURCES_DIR}
         UPDATE_COMMAND  ""
         DEPENDS         zlib
-        GIT_REPOSITORY  "https://github.com/google/protobuf.git"
-        GIT_TAG         "9f75c5aa851cd877fb0d93ccc31b8567a6706546"
+        GIT_REPOSITORY  ${PROTOBUF_REPO}
+        GIT_TAG         ${PROTOBUF_TAG}
         CONFIGURE_COMMAND
         ${CMAKE_COMMAND} ${PROTOBUF_SOURCES_DIR}/src/${TARGET_NAME}/cmake
             ${OPTIONAL_ARGS}
             -Dprotobuf_BUILD_TESTS=OFF
+            -DCMAKE_SKIP_RPATH=ON
             -DCMAKE_POSITION_INDEPENDENT_CODE=ON
             -DCMAKE_BUILD_TYPE=${THIRD_PARTY_BUILD_TYPE}
             -DCMAKE_INSTALL_PREFIX=${PROTOBUF_INSTALL_DIR}
@@ -203,7 +238,11 @@ FUNCTION(build_protobuf TARGET_NAME BUILD_FOR_HOST)
     )
 ENDFUNCTION()
 
-SET(PROTOBUF_VERSION 3.1)
+IF(NOT MOBILE_INFERENCE)
+    SET(PROTOBUF_VERSION 3.1)
+ELSE()
+    SET(PROTOBUF_VERSION 3.2)
+ENDIF()
 IF(CMAKE_CROSSCOMPILING)
     build_protobuf(protobuf_host TRUE)
     LIST(APPEND external_project_dependencies protobuf_host)
@@ -211,6 +250,7 @@ IF(CMAKE_CROSSCOMPILING)
     SET(PROTOBUF_PROTOC_EXECUTABLE ${protobuf_host_PROTOC_EXECUTABLE}
         CACHE FILEPATH "protobuf executable." FORCE)
 ENDIF()
+
 
 IF(NOT PROTOBUF_FOUND)
     build_protobuf(extern_protobuf FALSE)
@@ -227,9 +267,9 @@ IF(NOT PROTOBUF_FOUND)
     IF(WITH_C_API)
         INSTALL(DIRECTORY ${PROTOBUF_INCLUDE_DIR} DESTINATION third_party/protobuf)
         IF(ANDROID)
-            INSTALL(FILES ${PROTOBUF_LIBRARY} DESTINATION third_party/protobuf/lib/${ANDROID_ABI})
+            INSTALL(FILES ${PROTOBUF_LITE_LIBRARY} DESTINATION third_party/protobuf/lib/${ANDROID_ABI})
         ELSE()
-            INSTALL(FILES ${PROTOBUF_LIBRARY} DESTINATION third_party/protobuf/lib)
+            INSTALL(FILES ${PROTOBUF_LITE_LIBRARY} DESTINATION third_party/protobuf/lib)
         ENDIF()
     ENDIF()
 

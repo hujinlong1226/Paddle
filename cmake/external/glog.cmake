@@ -1,4 +1,4 @@
-# Copyright (c) 2016 PaddlePaddle Authors. All Rights Reserve.
+# Copyright (c) 2016 PaddlePaddle Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -26,12 +26,21 @@ ENDIF(WIN32)
 
 INCLUDE_DIRECTORIES(${GLOG_INCLUDE_DIR})
 
+IF(ANDROID AND ${CMAKE_SYSTEM_VERSION} VERSION_LESS "21")
+  # Using the unofficial glog for Android API < 21
+  SET(GLOG_REPOSITORY "https://github.com/Xreki/glog.git")
+  SET(GLOG_TAG "8a547150548b284382ccb6582408e9140ff2bea8")
+ELSE()
+  SET(GLOG_REPOSITORY "https://github.com/google/glog.git")
+  SET(GLOG_TAG "v0.3.5")
+ENDIF()
+
 ExternalProject_Add(
     extern_glog
     ${EXTERNAL_PROJECT_LOG_ARGS}
     DEPENDS gflags
-    GIT_REPOSITORY  "https://github.com/google/glog.git"
-    GIT_TAG         v0.3.5
+    GIT_REPOSITORY  ${GLOG_REPOSITORY}
+    GIT_TAG         ${GLOG_TAG}
     PREFIX          ${GLOG_SOURCES_DIR}
     UPDATE_COMMAND  ""
     CMAKE_ARGS      -DCMAKE_CXX_COMPILER=${CMAKE_CXX_COMPILER}
@@ -51,6 +60,13 @@ ExternalProject_Add(
                      -DCMAKE_POSITION_INDEPENDENT_CODE:BOOL=ON
                      -DCMAKE_BUILD_TYPE:STRING=${THIRD_PARTY_BUILD_TYPE}
 )
+IF(WIN32)
+  IF(NOT EXISTS "${GLOG_INSTALL_DIR}/lib/libglog.lib")
+    add_custom_command(TARGET extern_glog POST_BUILD
+    COMMAND cmake -E rename ${GLOG_INSTALL_DIR}/lib/glog.lib ${GLOG_INSTALL_DIR}/lib/libglog.lib
+  )
+  ENDIF()
+ENDIF(WIN32)
 
 ADD_LIBRARY(glog STATIC IMPORTED GLOBAL)
 SET_PROPERTY(TARGET glog PROPERTY IMPORTED_LOCATION ${GLOG_LIBRARIES})

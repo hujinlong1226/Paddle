@@ -1,4 +1,4 @@
-# Copyright (c) 2016 PaddlePaddle Authors. All Rights Reserve.
+# Copyright (c) 2016 PaddlePaddle Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -18,7 +18,7 @@ SET(GFLAGS_SOURCES_DIR ${THIRD_PARTY_PATH}/gflags)
 SET(GFLAGS_INSTALL_DIR ${THIRD_PARTY_PATH}/install/gflags)
 SET(GFLAGS_INCLUDE_DIR "${GFLAGS_INSTALL_DIR}/include" CACHE PATH "gflags include directory." FORCE)
 IF(WIN32)
-  set(GFLAGS_LIBRARIES "${GFLAGS_INSTALL_DIR}/lib/gflags.lib" CACHE FILEPATH "GFLAGS_LIBRARIES" FORCE)
+  set(GFLAGS_LIBRARIES "${GFLAGS_INSTALL_DIR}/lib/libgflags.lib" CACHE FILEPATH "GFLAGS_LIBRARIES" FORCE)
 ELSE(WIN32)
   set(GFLAGS_LIBRARIES "${GFLAGS_INSTALL_DIR}/lib/libgflags.a" CACHE FILEPATH "GFLAGS_LIBRARIES" FORCE)
 ENDIF(WIN32)
@@ -28,15 +28,8 @@ INCLUDE_DIRECTORIES(${GFLAGS_INCLUDE_DIR})
 ExternalProject_Add(
     extern_gflags
     ${EXTERNAL_PROJECT_LOG_ARGS}
-    # TODO(yiwang): The annoying warnings mentioned in
-    # https://github.com/PaddlePaddle/Paddle/issues/3277 are caused by
-    # gflags.  I fired a PR https://github.com/gflags/gflags/pull/230
-    # to fix it.  Before it gets accepted by the gflags team, we use
-    # my personal fork, which contains above fix, temporarily.  Let's
-    # change this back to the official Github repo once my PR is
-    # merged.
-    GIT_REPOSITORY  "https://github.com/wangkuiyi/gflags.git"
-    GIT_TAG         986964c07427ecb9cdb5bd73f73ebbd40e54dadb
+    GIT_REPOSITORY  "https://github.com/gflags/gflags.git"
+    GIT_TAG         77592648e3f3be87d6c7123eb81cbad75f9aef5a
     PREFIX          ${GFLAGS_SOURCES_DIR}
     UPDATE_COMMAND  ""
     CMAKE_ARGS      -DCMAKE_CXX_COMPILER=${CMAKE_CXX_COMPILER}
@@ -52,7 +45,13 @@ ExternalProject_Add(
                      -DCMAKE_POSITION_INDEPENDENT_CODE:BOOL=ON
                      -DCMAKE_BUILD_TYPE:STRING=${THIRD_PARTY_BUILD_TYPE}
 )
-
+IF(WIN32)
+  IF(NOT EXISTS "${GFLAGS_INSTALL_DIR}/lib/libgflags.lib")
+    add_custom_command(TARGET extern_gflags POST_BUILD
+    COMMAND cmake -E rename ${GFLAGS_INSTALL_DIR}/lib/gflags_static.lib ${GFLAGS_INSTALL_DIR}/lib/libgflags.lib
+  )
+  ENDIF()
+ENDIF(WIN32)
 ADD_LIBRARY(gflags STATIC IMPORTED GLOBAL)
 SET_PROPERTY(TARGET gflags PROPERTY IMPORTED_LOCATION ${GFLAGS_LIBRARIES})
 ADD_DEPENDENCIES(gflags extern_gflags)
@@ -67,3 +66,4 @@ IF(WITH_C_API)
     INSTALL(FILES ${GFLAGS_LIBRARIES} DESTINATION third_party/gflags/lib)
   ENDIF()
 ENDIF()
+
